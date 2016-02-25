@@ -53,7 +53,7 @@ tree.har=tree(classe~.,data=training)
 ```
 The resulting tree is shown below:
 
-![Decision Tree](figure/unnamed-chunk-8-1.png) 
+![Decision Tree](./tree.png) 
 
 This tree is quite bushy, and therefore prone to overfitting. Let us find the predictions based on this tree:
 
