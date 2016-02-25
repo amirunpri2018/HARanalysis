@@ -1,0 +1,100 @@
+---
+title: "Human Activity Recognition"
+author: "Burak H."
+date: "February 24, 2016"
+output: html_document
+---
+
+## Background
+In the following, we analyze the data from the accelerometers from the belt, forearm, arm, and dumbell of 6 participants. The aim is to correctly predict the way each activity is performed, divided in 5 classes (sitting-down, standing-up, standing, walking, and sitting). 
+
+## Cleaning the data
+```{r,echo=FALSE,results='hide',eval=TRUE}
+setwd("~/Coursera/Machine_Learning_Leek/assignmet/")
+suppressMessages(suppressWarnings(library(dplyr)))
+```
+We first read the training and test data
+```{r,echo=TRUE, eval=TRUE, results='markup'}
+tr0 <- read.csv("pml-training.csv",na.strings=c("NA",""))
+ts0 <- read.csv("pml-testing.csv",na.strings=c("NA",""))
+```
+Then, we remove all the columns that are completely NA, using the following
+```{r, echo=TRUE,eval=TRUE,results='markup'}
+tr1 <- tr0[, colSums(is.na(tr0)) == 0]
+ts1 <- ts0[, colSums(is.na(ts0)) == 0]
+```
+We also choose to remove some of the variables, such as timestamps, user_names etc.
+```{r,echo=TRUE,results='markup'}
+tr1 <- select(tr1, -c(X ,user_name, raw_timestamp_part_1,
+                       raw_timestamp_part_2, cvtd_timestamp, 
+                       new_window, num_window) )
+ts1 <- select(ts1, -c(X ,user_name, raw_timestamp_part_1,
+                      raw_timestamp_part_2, cvtd_timestamp, 
+                      new_window, num_window) )
+```
+
+## Simple Decision Tree
+Let us first divide the tr1 set into training and test sets for developing our model:
+```{r,echo=TRUE,results='hide'}
+suppressMessages(suppressWarnings(library(caret)))
+suppressMessages(suppressWarnings(library(tree)))
+```
+```{r,echo=TRUE,results='markup'}
+set.seed(101)
+inTrain <- createDataPartition(y = tr1$classe, p = 0.7, list = FALSE)
+training <- tr1[inTrain, ]; testing <- tr1[-inTrain, ]
+```
+Now, let us train a simple tree:
+```{r,echo=TRUE,results='markup'}
+tree.har=tree(classe~.,data=training)
+```
+The resulting tree is shown below:
+
+```{r,echo=FALSE, results='markup',fig.height=6,fig.width=6,fig.cap='Decision Tree'}
+plot(tree.har); text(tree.har, cex = 0.5)
+```
+
+This tree is quite bushy, and therefore prone to overfitting. Let us find the predictions based on this tree:
+
+```{r,echo=TRUE,results='markup'}
+tree.pred <- predict(tree.har, newdata = testing, type = "class")
+cm.tree <- confusionMatrix(tree.pred, testing$classe); round(cm.tree$overall,2)
+```
+The accuracy of the this decision tree is about 0.68. Let us try to use cross validation to prune the tree and reduce possible overfitting. We choose 10-fold cross validation to train a new tree:
+
+```{r,echo=TRUE,results='markup'}
+set.seed(201)
+ctrl <- trainControl(method = "cv", number = 10)
+tree.har <- train(classe ~., data = training, method = "rpart", trControl = ctrl)
+```
+
+Surprisingly, this new (pruned) tree performs worse than the bushy one:
+```{r,echo=TRUE,results='markup'}
+tree.pred <- predict(tree.har$finalModel, newdata = testing, type = "class")
+cm.tree <- confusionMatrix(tree.pred, testing$classe); round(cm.tree$overall,2)
+```
+
+Therefore, we choose to use Random Forests in order to train a more accurate model.
+
+## Random Forest Analysis
+Let us train a random forest model, with 5-fold cross validation and 200 trees. 
+```{r,echo=FALSE,results='hide',eval=TRUE}
+suppressMessages(suppressWarnings(library(randomForest)))
+```
+```{r,cache=TRUE,echo=TRUE,results='markup'}
+ctrl <- trainControl(allowParallel=T, method="cv", number=5)
+rf.har <- train(classe ~., data = training, method = "rf", 
+                           ntree=200, trControl = ctrl)
+rf.har$results
+```
+This chosen random forest model has mtry=27 (number of randomly chosen variables at each branch) and is very accurate (about %99).
+Using this model, we predict on the testing set:
+```{r,cache=TRUE,echo=TRUE,results='markup'}
+rf.predict <- predict(rf.har, newdata = testing)
+cm.rf <- confusionMatrix(rf.predict, testing$classe); round(cm.rf$overall,2)
+```
+Finally, we predict on the original testing set (where classe is unknown)
+```{r,cache=TRUE,echo=TRUE,results='markup'}
+rf.predict.ts <- predict(rf.har, newdata = ts1)
+rf.predict.ts
+```
